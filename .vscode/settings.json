@@ -1,0 +1,4 @@
+{
+	"python.envFile": "${workspaceFolder}/.env",
+	"python.defaultInterpreterPath": "C:/OSGeo4W/apps/Python39/python.exe"
+}
