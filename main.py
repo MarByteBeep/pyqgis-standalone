@@ -1,69 +1,57 @@
 from qgis.core import *
-from qgis.gui import *
-from qgis.PyQt.QtWidgets import *
-
-import processing
-from qgis.analysis import QgsNativeAlgorithms
-from processing.core.Processing import Processing
-
-class MapViewer(QMainWindow):
-	def __init__(self):
-		QMainWindow.__init__(self, None)
-		self._canvas = QgsMapCanvas()
-		self._root = QgsProject.instance().layerTreeRoot()
-
-		self.bridge = QgsLayerTreeMapCanvasBridge(self._root, self._canvas)
-		self.model = QgsLayerTreeModel(self._root)
-		self.model.setFlag(0x25043)
-		self.model.setFlag(QgsLayerTreeModel.ShowLegend)
-		self.layer_treeview = QgsLayerTreeView()
-		self.layer_treeview.setModel(self.model)
-
-		self.layer_tree_dock = QDockWidget("Layers")
-		self.layer_tree_dock.setObjectName("layers")
-		self.layer_tree_dock.setFeatures(QDockWidget.NoDockWidgetFeatures)
-		self.layer_tree_dock.setWidget(self.layer_treeview)
-
-		self.splitter = QSplitter()
-		self.splitter.addWidget(self.layer_tree_dock)
-		self.splitter.addWidget(self._canvas)
-		self.splitter.setCollapsible(0, False)
-		self.splitter.setStretchFactor(1, 1)
-
-		self.layout = QHBoxLayout()
-		self.layout.addWidget(self.splitter)
-		self.contents = QWidget()
-		self.contents.setLayout(self.layout)
-		self.setCentralWidget(self.contents)
-
-		self.load_layers()
-
-	def load_layers(self):
-		source_path = "path/to/data/source"
-			# layer = QgsVectorLayer(source_path, 'Layer1', 'ogr')
-			# QgsProject.instance().addMapLayer(layer)
-		urlWithParams = "type=xyz&url=https://02e31dc0-tiles.spatialbuzz.net/tiles/fr_ca-v041/styles/fr_ca_v041_ext_lte/{z}/{x}/{y}.png"
-		layer = QgsRasterLayer(urlWithParams, 'freedom', 'wms')
-		QgsProject.instance().addMapLayer(layer)
-		self._canvas.setExtent(layer.extent())
-		self._canvas.setLayers([layer])
-
-			### PROCESSING
-		#result = processing.run("native:buffer", {'INPUT': layer, 'DISTANCE': 10, 'OUTPUT': 'memory:'})
-		#params = {'INPUT': layer,'OUTPUT': '/Downloads/new_gpkg.gpkg','LAYER_NAME': 'new_layer_name'}
-		#result = processing.run("native:savefeatures", params)
-		#result = processing.run("native:buffer", {'INPUT': source_path, 'DISTANCE': 10, 'OUTPUT': 'memory:'})
-		QgsProject.instance().addMapLayer(result["OUTPUT"])
-    ########################
-
-qgs = QgsApplication([], True)
+import sys
+#sys.path.append("C://Program Files//QGIS 3.16//apps//qgis-ltr//python//plugins")
+qgs = QgsApplication([], False)
 qgs.initQgis()
 
+# import processing *after* initializing the application
+import processing
+from processing.core.Processing import Processing
 Processing.initialize()
-#QgsApplication.processingRegistry().addProvider(QgsNativeAlgorithms())
 
-main_window = MapViewer()
-main_window.show()
+from scripts.proximity import Proximity
 
-qgs.exec_()
-qgs.exitQgis()
+# I load the VectorLayer in code and pass it as an argument; obviously you could also just pass the
+# file name to 'INPUT'. This is just a demonstration that you can have full control over the input
+# layer before you send it off to the processing script
+
+#inLayer = QgsVectorLayer('test/nl_airports.osm|layername=multipolygons')
+urlWithParams = 'type=xyz&url=https://02e31dc0-tiles.spatialbuzz.net/tiles/fr_ca-v041/styles/fr_ca_v041_ext_lte/{z}/{x}/{y}.png'
+inLayer = QgsRasterLayer(urlWithParams, 'freedom', 'wms')
+if not inLayer.isValid():
+    raise Exception("Layer failed to load!")
+
+# Create the Proximity algorithm
+#alg = Proximity()
+source=inLayer
+if source.isValid():
+	provider = source.dataProvider()
+fw = QgsRasterFileWriter()
+fw.setOutputFormat('gpkg')
+tableName = "freedom"
+fw.setCreateOptions(["RASTER_TABLE=" + str(tableName), 'APPEND_SUBDATASET=YES'])
+pipe = QgsRasterPipe()
+if pipe.set(provider.clone()) is True:
+	projector = QgsRasterProjector()
+	projector.setCrs(provider.crs(), provider.crs())
+	if pipe.insert(2, projector) is True:
+		if fw.writeRaster(pipe, provider.xSize(), provider.ySize(), provider.extent(), provider.crs()) == 0:
+			print("ok")
+		else:
+			print("error")
+# Set the params needed for this algorithm
+#params = {'INPUT': inLayer,'OUTPUT': '/Downloads/new_gpkg.gpkg','LAYER_NAME': 'new_layer_name'}
+#result = processing.run("native:savefeatures", params)
+
+# Run the algorithm as you would from inside the QGIS GUI
+#alg.initAlgorithm()
+#ctx = QgsProcessingContext()
+#feedback = QgsProcessingFeedback()
+#alg.prepareAlgorithm(params, ctx, feedback)
+
+#alg.processAlgorithm(params, ctx, feedback)
+
+# All done
+print("Done")
+
+#qgs.exitQgis()
